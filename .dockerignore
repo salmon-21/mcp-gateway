@@ -1,0 +1,14 @@
+.git
+.gitignore
+*.md
+config.*.yaml
+config.local.yaml
+.env
+secrets/
+.vscode/
+.idea/
+.DS_Store
+/mcp-gateway
+*.test
+*.out
+coverage.txt
