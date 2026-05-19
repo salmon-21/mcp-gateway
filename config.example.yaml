@@ -1,0 +1,52 @@
+# Example mcp-gateway configuration. See README for field-by-field reference.
+
+listen: ":9000"
+read_header_timeout: 10s
+shutdown_timeout: 30s
+
+# External base URL the gateway is reachable at (used for OIDC issuer rewriting
+# and oauth-protected-resource metadata).
+external_url: "https://example.tail-scale.ts.net"
+
+dex:
+  # Public Dex URL the user agent is redirected to during /authorize.
+  public_url: "https://example.tail-scale.ts.net"
+  # Internal Dex HTTP URL the gateway uses for JWKS / discovery.
+  internal_url: "http://dex:5556"
+  # Dex gRPC endpoint for Dynamic Client Registration.
+  grpc_url: "dex:5557"
+  grpc_tls: false
+  # Static client that the gateway itself registers with Dex on first boot.
+  client_id: "mcp-gateway"
+  client_secret_file: "/run/secrets/dex_mcp_gateway_secret"
+
+jwt:
+  audience: ["mcp"]
+  jwks_cache_ttl: 5m
+  clock_skew: 30s
+
+backends:
+  - name: toggl
+    prefix: "/mcp/toggl"
+    upstream: "http://toggl-mcp:8099/mcp"
+    timeout: 60s
+    sse: true
+
+  - name: ms365
+    prefix: "/mcp/ms365"
+    upstream: "http://ms365-mcp:3001/mcp"
+    timeout: 60s
+    sse: true
+    headers:
+      - "Mcp-Session-Id"
+
+  - name: hc
+    prefix: "/mcp/hc"
+    upstream: "http://hcgateway-mcp:8100/mcp"
+    timeout: 60s
+    sse: true
+
+log:
+  level: "info"
+  format: "json"
+  include_request_body: false

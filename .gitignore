@@ -1,0 +1,16 @@
+/mcp-gateway
+*.exe
+*.test
+*.out
+coverage.txt
+
+# editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# local config / secrets
+config.local.yaml
+*.local.yaml
+.env
+secrets/
