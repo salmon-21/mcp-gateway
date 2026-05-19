@@ -21,7 +21,11 @@ dex:
   client_secret_file: "/run/secrets/dex_mcp_gateway_secret"
 
 jwt:
-  audience: ["mcp"]
+  # Optional: only accept tokens whose aud is in this list. Empty means
+  # accept any token signed by the trusted issuer — the right default for a
+  # DCR-fronted Dex, where every dynamically-registered client gets its own
+  # client_id as aud and no fixed value can be pinned in advance.
+  audience: []
   jwks_cache_ttl: 5m
   clock_skew: 30s
 

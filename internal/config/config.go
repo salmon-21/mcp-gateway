@@ -109,9 +109,8 @@ func (c *Config) validate() error {
 	if _, err := url.Parse(c.Dex.InternalURL); err != nil {
 		return fmt.Errorf("dex.internal_url: %w", err)
 	}
-	if len(c.JWT.Audience) == 0 {
-		return errors.New("jwt.audience must be non-empty")
-	}
+	// jwt.audience is optional: empty means accept any token signed by the
+	// trusted issuer (correct default for a DCR-fronted Dex).
 	if len(c.Backends) == 0 {
 		return errors.New("at least one backend is required")
 	}
