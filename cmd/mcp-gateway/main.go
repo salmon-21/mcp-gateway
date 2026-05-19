@@ -45,7 +45,7 @@ func run(ctx context.Context, cfgPath string) error {
 	initLogger(cfg.Log)
 	slog.Info("starting", "version", version, "listen", cfg.Listen, "backends", len(cfg.Backends))
 
-	verifier, err := oidc.NewVerifier(ctx, cfg.Dex.InternalURL, cfg.JWT.Audience, cfg.JWT.ClockSkew)
+	verifier, err := oidc.NewVerifier(ctx, cfg.Dex.InternalURL, cfg.Dex.PublicURL, cfg.JWT.Audience, cfg.JWT.ClockSkew)
 	if err != nil {
 		return fmt.Errorf("oidc verifier: %w", err)
 	}
@@ -75,12 +75,22 @@ func run(ctx context.Context, cfgPath string) error {
 	for _, p := range oidc.DexProxyPaths() {
 		mux.Handle(p, dexProxy)
 	}
+	for aliasPath, dexPath := range oidc.OAuthAliases() {
+		ap, err := oidc.NewDexAliasProxy(cfg.Dex.InternalURL, dexPath)
+		if err != nil {
+			return fmt.Errorf("dex alias proxy %s→%s: %w", aliasPath, dexPath, err)
+		}
+		mux.Handle(aliasPath, ap)
+	}
 	for _, bc := range cfg.Backends {
 		b, err := proxy.New(bc)
 		if err != nil {
 			return fmt.Errorf("backend %s: %w", bc.Name, err)
 		}
-		mux.Handle(b.Pattern(), authMW(b))
+		handler := authMW(b)
+		for _, p := range b.Patterns() {
+			mux.Handle(p, handler)
+		}
 		slog.Info("backend registered", "name", b.Name, "prefix", b.Prefix)
 	}
 

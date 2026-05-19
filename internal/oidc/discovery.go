@@ -98,6 +98,12 @@ func (d *Discovery) fetch(ctx context.Context) (*discoveryDoc, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
 		return nil, fmt.Errorf("parse discovery: %w", err)
 	}
+	// Advertise OAuth endpoints under /oauth/* so MCP clients (notably
+	// claude.ai) that hard-code that convention regardless of discovery
+	// still find them. The gateway aliases these to Dex's /auth and /token
+	// internally — see oidc.OAuthAliases.
+	m["authorization_endpoint"] = d.externalURL + "/oauth/authorize"
+	m["token_endpoint"] = d.externalURL + "/oauth/token"
 	m["registration_endpoint"] = d.externalURL + "/oauth/register"
 	out, err := json.Marshal(m)
 	if err != nil {

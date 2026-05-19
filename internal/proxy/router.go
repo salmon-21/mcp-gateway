@@ -78,10 +78,13 @@ func (b *Backend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	b.proxy.ServeHTTP(w, r)
 }
 
-// Pattern is the path pattern for http.ServeMux registration: matches the
-// prefix root and any path below it.
-func (b *Backend) Pattern() string {
-	return b.Prefix + "/"
+// Patterns are the path patterns to register on http.ServeMux. Both the
+// exact prefix and the subtree variant are needed: registering only the
+// subtree pattern (e.g. "/mcp/hc/") makes the mux 301-redirect the bare
+// "/mcp/hc" to "/mcp/hc/", which discards the POST body on most clients.
+// Registering both makes the exact path resolve to the handler directly.
+func (b *Backend) Patterns() []string {
+	return []string{b.Prefix, b.Prefix + "/"}
 }
 
 func singleJoiningSlash(a, b string) string {

@@ -56,3 +56,42 @@ func NewDexProxy(internalURL string) (http.Handler, error) {
 	}
 	return rp, nil
 }
+
+// OAuthAliases is the mapping from /oauth/* paths advertised in our
+// discovery document to the actual Dex paths. Some MCP clients (claude.ai)
+// hard-code /oauth/authorize and /oauth/token regardless of what the
+// authorization-server metadata says, so we accept both shapes.
+func OAuthAliases() map[string]string {
+	return map[string]string{
+		"/oauth/authorize": "/auth",
+		"/oauth/token":     "/token",
+	}
+}
+
+// NewDexAliasProxy is the same as NewDexProxy but rewrites the incoming
+// alias path (`/oauth/authorize`) to the matching Dex path (`/auth`) before
+// forwarding. One handler per alias.
+func NewDexAliasProxy(internalURL, dexPath string) (http.Handler, error) {
+	u, err := url.Parse(internalURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse dex internal url: %w", err)
+	}
+	if u.Scheme == "" || u.Host == "" {
+		return nil, fmt.Errorf("dex internal url lacks scheme/host: %q", internalURL)
+	}
+	rp := &httputil.ReverseProxy{
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.Out.URL.Scheme = u.Scheme
+			r.Out.URL.Host = u.Host
+			r.Out.URL.Path = dexPath
+			r.Out.URL.RawPath = ""
+			r.Out.Host = u.Host
+			r.SetXForwarded()
+		},
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			slog.Warn("dex alias upstream error", "path", r.URL.Path, "err", err)
+			http.Error(w, "bad gateway", http.StatusBadGateway)
+		},
+	}
+	return rp, nil
+}

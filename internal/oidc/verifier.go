@@ -24,10 +24,23 @@ type Verifier struct {
 }
 
 // NewVerifier dials the Dex internal URL to fetch OIDC metadata and JWKS,
-// then returns a Verifier that validates tokens issued by that Dex. The
+// then returns a Verifier that validates tokens issued by that Dex.
+//
+// Dex is typically reachable from the gateway at an internal hostname
+// (e.g. http://dex:5556) but advertises a public issuer URL in its
+// openid-configuration (e.g. https://example.com). go-oidc rejects that
+// mismatch by default, so we tell it the issuer we expect using
+// InsecureIssuerURLContext — the name is a misnomer; the only thing that
+// becomes "insecure" is that the discovery URL no longer has to equal the
+// issuer claim, which is the whole point of running Dex behind a reverse
+// proxy.
+//
 // clockSkew is applied by shifting go-oidc's "now" backwards, which is the
 // only knob the underlying library exposes for skew tolerance.
-func NewVerifier(ctx context.Context, internalURL string, allowedAudience []string, clockSkew time.Duration) (*Verifier, error) {
+func NewVerifier(ctx context.Context, internalURL, expectedIssuer string, allowedAudience []string, clockSkew time.Duration) (*Verifier, error) {
+	if expectedIssuer != "" && expectedIssuer != internalURL {
+		ctx = oidc.InsecureIssuerURLContext(ctx, expectedIssuer)
+	}
 	provider, err := oidc.NewProvider(ctx, internalURL)
 	if err != nil {
 		return nil, fmt.Errorf("oidc provider: %w", err)
