@@ -15,10 +15,6 @@ dex:
   internal_url: "http://dex:5556"
   # Dex gRPC endpoint for Dynamic Client Registration.
   grpc_url: "dex:5557"
-  grpc_tls: false
-  # Static client that the gateway itself registers with Dex on first boot.
-  client_id: "mcp-gateway"
-  client_secret_file: "/run/secrets/dex_mcp_gateway_secret"
 
 jwt:
   # Optional: only accept tokens whose aud is in this list. Empty means
@@ -26,7 +22,6 @@ jwt:
   # DCR-fronted Dex, where every dynamically-registered client gets its own
   # client_id as aud and no fixed value can be pinned in advance.
   audience: []
-  jwks_cache_ttl: 5m
   clock_skew: 30s
 
 backends:
@@ -36,16 +31,14 @@ backends:
     timeout: 60s
     sse: true
 
-  - name: ms365
-    prefix: "/mcp/ms365"
+  - name: todo
+    prefix: "/mcp/todo"
     upstream: "http://ms365-mcp:3001/mcp"
     timeout: 60s
     sse: true
-    headers:
-      - "Mcp-Session-Id"
 
-  - name: hc
-    prefix: "/mcp/hc"
+  - name: hcgateway
+    prefix: "/mcp/hcgateway"
     upstream: "http://hcgateway-mcp:8100/mcp"
     timeout: 60s
     sse: true
@@ -53,4 +46,3 @@ backends:
 log:
   level: "info"
   format: "json"
-  include_request_body: false

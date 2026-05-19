@@ -24,18 +24,14 @@ type Config struct {
 }
 
 type Dex struct {
-	PublicURL        string `yaml:"public_url"`
-	InternalURL      string `yaml:"internal_url"`
-	GrpcURL          string `yaml:"grpc_url"`
-	GrpcTLS          bool   `yaml:"grpc_tls"`
-	ClientID         string `yaml:"client_id"`
-	ClientSecretFile string `yaml:"client_secret_file"`
+	PublicURL   string `yaml:"public_url"`
+	InternalURL string `yaml:"internal_url"`
+	GrpcURL     string `yaml:"grpc_url"`
 }
 
 type JWT struct {
-	Audience     []string      `yaml:"audience"`
-	JwksCacheTTL time.Duration `yaml:"jwks_cache_ttl"`
-	ClockSkew    time.Duration `yaml:"clock_skew"`
+	Audience  []string      `yaml:"audience"`
+	ClockSkew time.Duration `yaml:"clock_skew"`
 }
 
 type Backend struct {
@@ -44,13 +40,11 @@ type Backend struct {
 	Upstream string        `yaml:"upstream"`
 	Timeout  time.Duration `yaml:"timeout"`
 	SSE      bool          `yaml:"sse"`
-	Headers  []string      `yaml:"headers"`
 }
 
 type Log struct {
-	Level              string `yaml:"level"`
-	Format             string `yaml:"format"`
-	IncludeRequestBody bool   `yaml:"include_request_body"`
+	Level  string `yaml:"level"`
+	Format string `yaml:"format"`
 }
 
 // Load reads, parses, applies defaults, and validates a YAML config file.
@@ -76,9 +70,6 @@ func (c *Config) applyDefaults() {
 	}
 	if c.ShutdownTimeout == 0 {
 		c.ShutdownTimeout = 30 * time.Second
-	}
-	if c.JWT.JwksCacheTTL == 0 {
-		c.JWT.JwksCacheTTL = 5 * time.Minute
 	}
 	if c.JWT.ClockSkew == 0 {
 		c.JWT.ClockSkew = 30 * time.Second

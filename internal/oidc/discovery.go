@@ -94,8 +94,11 @@ func (d *Discovery) fetch(ctx context.Context) (*discoveryDoc, error) {
 		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil, fmt.Errorf("dex returned %d", resp.StatusCode)
 	}
+	// openid-configuration is well under 64 KiB in practice; the cap guards
+	// against a runaway upstream serving garbage.
+	body := io.LimitReader(resp.Body, 64<<10)
 	var m map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+	if err := json.NewDecoder(body).Decode(&m); err != nil {
 		return nil, fmt.Errorf("parse discovery: %w", err)
 	}
 	// Advertise OAuth endpoints under /oauth/* so MCP clients (notably

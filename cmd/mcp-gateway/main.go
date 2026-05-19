@@ -51,7 +51,7 @@ func run(ctx context.Context, cfgPath string) error {
 	}
 	authMW := verifier.Middleware(cfg.ExternalURL)
 
-	dexProxy, err := oidc.NewDexProxy(cfg.Dex.InternalURL)
+	dexProxy, err := oidc.NewDexProxy(cfg.Dex.InternalURL, "")
 	if err != nil {
 		return fmt.Errorf("dex proxy: %w", err)
 	}
@@ -76,7 +76,7 @@ func run(ctx context.Context, cfgPath string) error {
 		mux.Handle(p, dexProxy)
 	}
 	for aliasPath, dexPath := range oidc.OAuthAliases() {
-		ap, err := oidc.NewDexAliasProxy(cfg.Dex.InternalURL, dexPath)
+		ap, err := oidc.NewDexProxy(cfg.Dex.InternalURL, dexPath)
 		if err != nil {
 			return fmt.Errorf("dex alias proxy %s→%s: %w", aliasPath, dexPath, err)
 		}
@@ -96,7 +96,7 @@ func run(ctx context.Context, cfgPath string) error {
 
 	srv := &http.Server{
 		Addr:              cfg.Listen,
-		Handler:           mux,
+		Handler:           accessLog(mux),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 	}
 
@@ -116,6 +116,51 @@ func run(ctx context.Context, cfgPath string) error {
 		return srv.Shutdown(shutdownCtx)
 	case err := <-errCh:
 		return err
+	}
+}
+
+// accessLog records every request so the gateway is debuggable behind a
+// client that cannot tcpdump itself. /healthz is skipped because Docker
+// hits it every 5s and the line is pure noise.
+func accessLog(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		sw := &statusRecorder{ResponseWriter: w, status: 200}
+		next.ServeHTTP(sw, r)
+		slog.Info("http",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", sw.status,
+			"remote", r.RemoteAddr,
+		)
+	})
+}
+
+// statusRecorder captures the HTTP status while forwarding everything else
+// to the underlying ResponseWriter. Flush is implemented because the SSE
+// backends rely on http.Flusher; without it httputil.ReverseProxy's
+// FlushInterval=-1 silently downgrades to buffered.
+type statusRecorder struct {
+	http.ResponseWriter
+	status      int
+	wroteHeader bool
+}
+
+func (s *statusRecorder) WriteHeader(code int) {
+	if s.wroteHeader {
+		return
+	}
+	s.status = code
+	s.wroteHeader = true
+	s.ResponseWriter.WriteHeader(code)
+}
+
+func (s *statusRecorder) Flush() {
+	if f, ok := s.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
 	}
 }
 

@@ -13,16 +13,18 @@ import (
 
 func TestBackendRewritesPathAndPassesHeaders(t *testing.T) {
 	var (
-		gotPath     string
-		gotSession  string
-		gotAccept   string
-		gotForward  string
+		gotPath    string
+		gotSession string
+		gotAccept  string
+		gotForward string
+		gotAuth    string
 	)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotSession = r.Header.Get("Mcp-Session-Id")
 		gotAccept = r.Header.Get("Accept")
 		gotForward = r.Header.Get("X-Forwarded-Host")
+		gotAuth = r.Header.Get("Authorization")
 		_, _ = io.WriteString(w, "ok")
 	}))
 	defer upstream.Close()
@@ -33,7 +35,6 @@ func TestBackendRewritesPathAndPassesHeaders(t *testing.T) {
 		Upstream: upstream.URL + "/mcp",
 		Timeout:  5 * time.Second,
 		SSE:      true,
-		Headers:  []string{"Mcp-Session-Id"},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -62,6 +63,9 @@ func TestBackendRewritesPathAndPassesHeaders(t *testing.T) {
 	}
 	if gotForward != "gateway.example" {
 		t.Errorf("X-Forwarded-Host = %q, want gateway.example", gotForward)
+	}
+	if gotAuth != "" {
+		t.Errorf("Authorization must be stripped before reaching upstream, got %q", gotAuth)
 	}
 }
 

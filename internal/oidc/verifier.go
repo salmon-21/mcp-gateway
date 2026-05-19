@@ -56,11 +56,7 @@ func NewVerifier(ctx context.Context, internalURL, expectedIssuer string, allowe
 }
 
 // Verify parses and validates a raw JWT, returning the subject on success.
-// Signature, issuer and expiry are checked by go-oidc using the JWKS fetched
-// from Dex. Audience is checked only when an allow-list is configured;
-// otherwise any token signed by the trusted issuer is accepted (which is
-// the right default for a DCR-fronted Dex, since each dynamically-registered
-// client gets its own client_id as aud).
+// Audience is checked only when an allow-list is configured.
 func (v *Verifier) Verify(ctx context.Context, raw string) (sub string, err error) {
 	tok, err := v.verifier.Verify(ctx, raw)
 	if err != nil {

@@ -5,6 +5,7 @@ package proxy
 import (
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -35,31 +36,31 @@ func New(b config.Backend) (*Backend, error) {
 	}
 
 	prefix := strings.TrimRight(b.Prefix, "/")
-	headerAllowlist := append([]string{
-		"Mcp-Session-Id",
-		"Accept",
-		"Content-Type",
-	}, b.Headers...)
+	// stripHeaders are the request headers httputil.ProxyRequest forwards by
+	// default that we must not leak. Authorization carries the gateway's JWT,
+	// which the backend has no business seeing — the gateway has already
+	// validated it and the backend trusts the proxy entirely.
+	stripHeaders := []string{"Authorization", "Cookie"}
 
 	rp := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
 			rest := strings.TrimPrefix(r.In.URL.Path, prefix)
-			r.Out.URL.Scheme = up.Scheme
-			r.Out.URL.Host = up.Host
-			r.Out.URL.Path = singleJoiningSlash(up.Path, rest)
-			r.Out.URL.RawQuery = r.In.URL.RawQuery
-			r.Out.Host = up.Host
-
-			for _, h := range headerAllowlist {
-				if v := r.In.Header.Values(h); len(v) > 0 {
-					r.Out.Header[h] = v
-				}
+			r.Out.URL.Path = rest
+			r.Out.URL.RawPath = ""
+			r.SetURL(up)
+			for _, h := range stripHeaders {
+				r.Out.Header.Del(h)
 			}
 			r.SetXForwarded()
 		},
 		Transport: &http.Transport{
+			DialContext: (&net.Dialer{
+				Timeout:   5 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
 			ResponseHeaderTimeout: b.Timeout,
 			IdleConnTimeout:       90 * time.Second,
+			MaxIdleConnsPerHost:   10,
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			slog.Warn("upstream error", "backend", b.Name, "err", err)
@@ -87,20 +88,3 @@ func (b *Backend) Patterns() []string {
 	return []string{b.Prefix, b.Prefix + "/"}
 }
 
-func singleJoiningSlash(a, b string) string {
-	if a == "" {
-		if !strings.HasPrefix(b, "/") {
-			return "/" + b
-		}
-		return b
-	}
-	aSlash := strings.HasSuffix(a, "/")
-	bSlash := strings.HasPrefix(b, "/")
-	switch {
-	case aSlash && bSlash:
-		return a + b[1:]
-	case !aSlash && !bSlash:
-		return a + "/" + b
-	}
-	return a + b
-}

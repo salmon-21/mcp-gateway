@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -75,12 +74,18 @@ type dcrResponse struct {
 	Scope                   string   `json:"scope"`
 }
 
+// maxDCRBodyBytes caps the unauthenticated DCR request body to keep this
+// endpoint from doubling as a DoS surface; a real RFC 7591 registration is
+// well under 1 KiB.
+const maxDCRBodyBytes = 64 << 10 // 64 KiB
+
 func (h *DCR) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxDCRBodyBytes)
 	var req dcrRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeRegErr(w, http.StatusBadRequest, "invalid_client_metadata", "request body is not valid JSON")
@@ -175,7 +180,7 @@ func writeRegErr(w http.ResponseWriter, status int, code, desc string) {
 func randomHex(n int) (string, error) {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
-		return "", errors.New("randomness unavailable")
+		return "", fmt.Errorf("read random: %w", err)
 	}
 	return hex.EncodeToString(b), nil
 }
