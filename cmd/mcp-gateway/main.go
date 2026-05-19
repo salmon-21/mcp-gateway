@@ -51,11 +51,30 @@ func run(ctx context.Context, cfgPath string) error {
 	}
 	authMW := verifier.Middleware(cfg.ExternalURL)
 
+	dexProxy, err := oidc.NewDexProxy(cfg.Dex.InternalURL)
+	if err != nil {
+		return fmt.Errorf("dex proxy: %w", err)
+	}
+	discovery := oidc.NewDiscovery(cfg.Dex.InternalURL, cfg.ExternalURL)
+	protected := oidc.ProtectedResource(cfg.ExternalURL)
+	dcr, err := oidc.NewDCR(cfg.Dex.GrpcURL)
+	if err != nil {
+		return fmt.Errorf("dcr: %w", err)
+	}
+	defer func() { _ = dcr.Close() }()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
+	mux.Handle("/.well-known/oauth-protected-resource", protected)
+	mux.Handle("/.well-known/oauth-authorization-server", discovery)
+	mux.Handle("/.well-known/openid-configuration", discovery)
+	mux.Handle("/oauth/register", dcr)
+	for _, p := range oidc.DexProxyPaths() {
+		mux.Handle(p, dexProxy)
+	}
 	for _, bc := range cfg.Backends {
 		b, err := proxy.New(bc)
 		if err != nil {
