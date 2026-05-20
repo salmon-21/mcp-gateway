@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/salmon-21/mcp-gateway/internal/config"
 	"github.com/salmon-21/mcp-gateway/internal/oidc"
@@ -21,11 +23,15 @@ var version = "dev"
 func main() {
 	cfgPath := flag.String("config", "/etc/mcp-gateway/config.yaml", "path to config file")
 	showVersion := flag.Bool("version", false, "print version and exit")
+	healthcheck := flag.Bool("healthcheck", false, "probe the local /healthz and exit 0/1; for use as Docker HEALTHCHECK CMD")
 	flag.Parse()
 
 	if *showVersion {
 		fmt.Println(version)
 		return
+	}
+	if *healthcheck {
+		os.Exit(runHealthcheck(*cfgPath))
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -117,6 +123,36 @@ func run(ctx context.Context, cfgPath string) error {
 	case err := <-errCh:
 		return err
 	}
+}
+
+// runHealthcheck probes /healthz on the configured listen address, so the
+// distroless image can be HEALTHCHECK'd without bundling a shell or wget.
+// Exits 0 on 200, 1 otherwise.
+func runHealthcheck(cfgPath string) int {
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "healthcheck config:", err)
+		return 1
+	}
+	listen := cfg.Listen
+	if strings.HasPrefix(listen, ":") {
+		listen = "127.0.0.1" + listen
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+listen+"/healthz", nil)
+	if err != nil {
+		return 1
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 1
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 1
+	}
+	return 0
 }
 
 // accessLog records every request so the gateway is debuggable behind a
