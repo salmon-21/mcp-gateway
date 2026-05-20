@@ -3,10 +3,25 @@ package oidc
 import (
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"time"
 )
+
+// dexTransport is the shared transport used for every Dex reverse proxy.
+// A bounded dial timeout protects the gateway from hanging if Dex stops
+// listening, and MaxIdleConnsPerHost keeps the keep-alive pool from
+// growing unbounded under the auth burst that happens during DCR + login.
+var dexTransport = &http.Transport{
+	DialContext: (&net.Dialer{
+		Timeout:   5 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}).DialContext,
+	IdleConnTimeout:     90 * time.Second,
+	MaxIdleConnsPerHost: 10,
+}
 
 // DexProxyPaths are the Dex HTTP paths the gateway transparently
 // reverse-proxies so the entire OAuth/OIDC flow is served from the
@@ -68,6 +83,7 @@ func NewDexProxy(internalURL, dexPath string) (http.Handler, error) {
 			r.Out.Host = u.Host
 			r.SetXForwarded()
 		},
+		Transport: dexTransport,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			slog.Warn("dex upstream error", "path", r.URL.Path, "err", err)
 			http.Error(w, "bad gateway", http.StatusBadGateway)

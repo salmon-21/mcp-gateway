@@ -113,3 +113,50 @@ func TestDCRConfidentialClientGetsSecret(t *testing.T) {
 		t.Errorf("confidential client should get a secret")
 	}
 }
+
+func TestDCRRejectsBadJSON(t *testing.T) {
+	h := newHandler(&fakeDex{})
+	r := httptest.NewRequest(http.MethodPost, "/oauth/register", strings.NewReader(`not-json`))
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, r)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rr.Code)
+	}
+}
+
+func TestDCRRejectsOverlargeBody(t *testing.T) {
+	h := newHandler(&fakeDex{})
+	// > maxDCRBodyBytes worth of redirect_uris padding
+	huge := strings.Repeat("a", maxDCRBodyBytes+1)
+	body := `{"redirect_uris":["https://` + huge + `"]}`
+	r := httptest.NewRequest(http.MethodPost, "/oauth/register", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, r)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (MaxBytesReader trips JSON decode)", rr.Code)
+	}
+}
+
+func TestDCRReportsCollision(t *testing.T) {
+	h := newHandler(&fakeDex{resp: &dexapi.CreateClientResp{AlreadyExists: true}})
+	r := httptest.NewRequest(http.MethodPost, "/oauth/register",
+		strings.NewReader(`{"redirect_uris":["https://x"]}`))
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, r)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", rr.Code)
+	}
+}
+
+func TestDCRMethodNotAllowed(t *testing.T) {
+	h := newHandler(&fakeDex{})
+	r := httptest.NewRequest(http.MethodGet, "/oauth/register", nil)
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, r)
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want 405", rr.Code)
+	}
+	if rr.Header().Get("Allow") != http.MethodPost {
+		t.Errorf("Allow header = %q, want POST", rr.Header().Get("Allow"))
+	}
+}

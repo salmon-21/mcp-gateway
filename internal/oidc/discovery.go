@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // ProtectedResource returns a handler serving the RFC 9728
@@ -40,6 +42,9 @@ type Discovery struct {
 	ttl            time.Duration
 	client         *http.Client
 	cache          atomic.Pointer[discoveryDoc]
+	// singleflight coalesces concurrent refreshes so a TTL expiry under load
+	// hits Dex once instead of once per in-flight request.
+	sf singleflight.Group
 }
 
 type discoveryDoc struct {
@@ -59,10 +64,16 @@ func NewDiscovery(dexInternalURL, externalURL string) *Discovery {
 func (d *Discovery) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	doc := d.cache.Load()
 	if doc == nil || time.Now().After(doc.exp) {
-		fresh, err := d.fetch(r.Context())
+		freshAny, err, _ := d.sf.Do("discovery", func() (any, error) {
+			// Re-check after winning the singleflight lottery: a previous
+			// flight may have already refreshed the cache.
+			if cur := d.cache.Load(); cur != nil && time.Now().Before(cur.exp) {
+				return cur, nil
+			}
+			return d.fetch(r.Context())
+		})
 		if err != nil {
 			if doc != nil {
-				// stale-while-error: serve cached body if upstream is down.
 				slog.Warn("discovery upstream failed, serving stale", "err", err)
 			} else {
 				slog.Error("discovery upstream failed, no cache", "err", err)
@@ -70,6 +81,7 @@ func (d *Discovery) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		} else {
+			fresh := freshAny.(*discoveryDoc)
 			d.cache.Store(fresh)
 			doc = fresh
 		}

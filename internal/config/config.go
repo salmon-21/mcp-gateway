@@ -97,11 +97,12 @@ func (c *Config) validate() error {
 	if c.Dex.PublicURL == "" || c.Dex.InternalURL == "" || c.Dex.GrpcURL == "" {
 		return errors.New("dex.{public_url,internal_url,grpc_url} are required")
 	}
-	if _, err := url.Parse(c.Dex.InternalURL); err != nil {
-		return fmt.Errorf("dex.internal_url: %w", err)
+	if err := validateAbsoluteHTTPURL(c.Dex.InternalURL, "dex.internal_url"); err != nil {
+		return err
 	}
-	// jwt.audience is optional: empty means accept any token signed by the
-	// trusted issuer (correct default for a DCR-fronted Dex).
+	if err := validateAbsoluteHTTPURL(c.Dex.PublicURL, "dex.public_url"); err != nil {
+		return err
+	}
 	if len(c.Backends) == 0 {
 		return errors.New("at least one backend is required")
 	}
@@ -117,9 +118,23 @@ func (c *Config) validate() error {
 			return fmt.Errorf("backends[%d].prefix duplicated: %s", i, b.Prefix)
 		}
 		seenPrefix[b.Prefix] = true
-		if _, err := url.Parse(b.Upstream); err != nil {
-			return fmt.Errorf("backends[%d].upstream: %w", i, err)
+		if err := validateAbsoluteHTTPURL(b.Upstream, fmt.Sprintf("backends[%d].upstream", i)); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+func validateAbsoluteHTTPURL(s, field string) error {
+	u, err := url.Parse(s)
+	if err != nil {
+		return fmt.Errorf("%s: %w", field, err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("%s must use http or https, got %q", field, u.Scheme)
+	}
+	if u.Host == "" {
+		return fmt.Errorf("%s missing host", field)
 	}
 	return nil
 }
