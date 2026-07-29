@@ -88,7 +88,7 @@ func (v *Verifier) Middleware(externalURL string) func(http.Handler) http.Handle
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			raw, ok := extractBearer(r)
 			if !ok {
-				v.deny(w, resourceMeta, "missing bearer token")
+				v.challenge(w, resourceMeta)
 				return
 			}
 			sub, err := v.Verify(r.Context(), raw)
@@ -102,10 +102,22 @@ func (v *Verifier) Middleware(externalURL string) func(http.Handler) http.Handle
 	}
 }
 
+// challenge answers a request that carried no bearer credential at all. RFC
+// 6750 §3 reserves error= for a credential that was supplied and rejected, so
+// the bare challenge omits it; scope= is the MCP spec's SHOULD, telling the
+// client what to ask for instead of making it guess from the metadata.
+func (v *Verifier) challenge(w http.ResponseWriter, resourceMeta string) {
+	w.Header().Set("WWW-Authenticate",
+		fmt.Sprintf(`Bearer resource_metadata=%q, scope=%q`,
+			resourceMeta, strings.Join(ResourceScopes, " ")))
+	http.Error(w, "unauthorized", http.StatusUnauthorized)
+}
+
+// deny answers a request whose bearer token was present but did not verify.
 func (v *Verifier) deny(w http.ResponseWriter, resourceMeta, errDesc string) {
 	w.Header().Set("WWW-Authenticate",
-		fmt.Sprintf(`Bearer resource_metadata="%s", error="invalid_token", error_description=%q`,
-			resourceMeta, errDesc))
+		fmt.Sprintf(`Bearer resource_metadata=%q, scope=%q, error="invalid_token", error_description=%q`,
+			resourceMeta, strings.Join(ResourceScopes, " "), errDesc))
 	http.Error(w, "unauthorized", http.StatusUnauthorized)
 }
 

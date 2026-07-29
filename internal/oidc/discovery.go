@@ -14,6 +14,19 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
+// ResourceScopes are the scopes advertised in the protected-resource metadata
+// and echoed in the WWW-Authenticate challenge, so a client that follows the
+// challenge asks for exactly what the metadata promises.
+//
+// The MCP authorization spec says a protected resource SHOULD NOT advertise
+// offline_access, on the grounds that a refresh token is a client concern
+// rather than a resource requirement. We keep it deliberately: claude.ai's
+// connector is only usable long-term if it holds a refresh token, and the
+// refresh token is the single piece of per-user state this deployment
+// persists (see CLAUDE.md, "Dex sqlite3 は dex-data volume に永続化").
+// Dropping it risks re-authentication on every token expiry.
+var ResourceScopes = []string{"openid", "profile", "email", "offline_access"}
+
 // ProtectedResource returns a handler serving the RFC 9728
 // `oauth-protected-resource` metadata document. It is static given the
 // gateway's external URL.
@@ -21,7 +34,7 @@ func ProtectedResource(externalURL string) http.Handler {
 	body, _ := json.Marshal(map[string]any{
 		"resource":                 externalURL,
 		"authorization_servers":    []string{externalURL},
-		"scopes_supported":         []string{"openid", "profile", "email", "offline_access"},
+		"scopes_supported":         ResourceScopes,
 		"bearer_methods_supported": []string{"header"},
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -96,8 +96,13 @@ func TestMiddlewareEmits401WithWWWAuthenticate(t *testing.T) {
 			if !strings.Contains(ww, `resource_metadata="https://gateway.example/.well-known/oauth-protected-resource"`) {
 				t.Errorf("resource_metadata missing or wrong: %q", ww)
 			}
-			if !strings.Contains(ww, `error="invalid_token"`) {
-				t.Errorf("error code missing: %q", ww)
+			if !strings.Contains(ww, `scope="openid profile email offline_access"`) {
+				t.Errorf("scope missing from challenge: %q", ww)
+			}
+			// No credential was supplied, so RFC 6750 §3 says the challenge
+			// must not claim the token was invalid.
+			if strings.Contains(ww, "error=") {
+				t.Errorf("bare challenge must not carry error=: %q", ww)
 			}
 			if called {
 				t.Error("next handler must not run on auth failure")
